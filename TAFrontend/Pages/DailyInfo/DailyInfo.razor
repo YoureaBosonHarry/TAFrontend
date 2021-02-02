@@ -1,0 +1,129 @@
+﻿@page "/DailyInfoByTicker"
+
+@using ChartJs.Blazor
+@using ChartJs.Blazor.LineChart
+@using ChartJs.Blazor.Common.Axes
+@using ChartJs.Blazor.Common
+
+@inject TAFrontend.Services.Interfaces.IDailyInfoService dailyInfoService
+
+
+<BlazoredTypeahead SearchMethod="SearchTickers"
+                   Placeholder="Search By Ticker"
+                   TValue="Tickers"
+                   TItem="Tickers"
+                   Value="selectedTicker"
+                   ValueChanged="GetDailyInfoByTickerAsync"
+                   ValueExpression="@(() => selectedTicker)">
+    <SelectedTemplate>
+        @context.Ticker
+    </SelectedTemplate>
+    <ResultTemplate>
+        @context.Ticker
+    </ResultTemplate>
+</BlazoredTypeahead>
+
+<Chart Config="chartConfig" @ref="chart"></Chart>
+
+<Table TableItem="TickerDailyInfo" Items="tickerDailyInfo" PageSize="14">
+    <Column TableItem="TickerDailyInfo" Title="Date" Field="@(x => x.DateAdded)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Daily Low" Field="@(x => x.DailyLow)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Daily High" Field="@(x => x.DailyHigh)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Daily Open" Field="@(x => x.DailyOpen)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Daily Close" Field="@(x => x.DailyClose)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Adj. Close" Field="@(x => x.AdjClose)" Sortable="true" Filterable="true" Width="10%" />
+    <Column TableItem="TickerDailyInfo" Title="Volume" Field="@(x => x.Volume)" Sortable="true" Filterable="true" Width="10%" />
+    <Pager ShowPageNumber="true" ShowTotalCount="true" />
+</Table>
+
+@code {
+    private IEnumerable<Tickers> tickers { get; set; }
+    private Tickers selectedTicker { get; set; }
+    private IEnumerable<TickerDailyInfo> tickerDailyInfo { get; set; }
+    private LineConfig chartConfig;
+    private Chart chart;
+    private LineDataset<decimal> dataSet = new LineDataset<decimal>()
+    {
+        Label = $"",
+        BackgroundColor = ColorUtil.FromDrawingColor(System.Drawing.Color.Red),
+        BorderColor = ColorUtil.FromDrawingColor(System.Drawing.Color.Red),
+        Fill = FillingMode.Disabled
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        tickers = await dailyInfoService.GetTickersAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        chartConfig = new LineConfig
+        {
+            Options = new LineOptions
+            {
+                Responsive = true,
+                Title = new ChartJs.Blazor.Common.OptionsTitle
+                {
+                    Display = true,
+                    Text = $"{selectedTicker} Daily Adj. Close"
+                },
+
+                Scales = new Scales
+                {
+                    XAxes = new List<CartesianAxis>
+            {
+                        new TimeAxis
+                        {
+                            ScaleLabel = new ScaleLabel
+                            {
+                                LabelString = "Date"
+                            },
+                            Time = new TimeOptions
+                            {
+                                TooltipFormat = "ll",
+                                Unit = ChartJs.Blazor.Common.Enums.TimeMeasurement.Day
+                            },
+                        }
+                    },
+                    YAxes = new List<CartesianAxis>
+            {
+                        new LinearCartesianAxis
+                        {
+                            ScaleLabel = new ScaleLabel
+                            {
+                                LabelString = "Adj Close"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private async Task<IEnumerable<Tickers>> SearchTickers(string searchText)
+    {
+        return await Task.FromResult(tickers.Where(x => x.Ticker.ToLower().Contains(searchText.ToLower())).ToList());
+    }
+
+    private void AddDateLabels(int period)
+    {
+        for (int i = 0; i < period; ++i)
+        {
+            chartConfig.Data.Labels.Add(DateTime.Now.AddDays(-i).Date.ToString("o"));
+        }
+    }
+
+    private async Task GetDailyInfoByTickerAsync(Tickers ticker)
+    {
+        selectedTicker = ticker;
+        tickerDailyInfo = await dailyInfoService.GetDailyInfoByTickerAsync(selectedTicker.Ticker);
+        foreach (var item in tickerDailyInfo)
+        {
+            chartConfig.Data.Labels.Add(item.DateAdded.Date.ToShortDateString());
+            dataSet.Add(item.AdjClose);
+        }
+        chartConfig.Data.Datasets.Add(dataSet);
+        await chart.Update();
+    }
+}
